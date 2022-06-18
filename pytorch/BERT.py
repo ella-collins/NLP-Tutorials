@@ -1,21 +1,21 @@
 from pickle import load
 import numpy as np
-from torch import nn
 import torch
+from torch import nn
 from torch.utils.data import DataLoader
 from torch.nn.functional import cross_entropy,softmax, relu
 
-import utils
-from GPT import GPT
 import os
 import pickle
+import utils
+from GPT import GPT
+
 
 MASK_RATE = 0.15
 
 class BERT(GPT):
 
-    def __init__(
-        self, model_dim, max_len, num_layer, num_head, n_vocab, lr,
+    def __init__(self, model_dim, max_len, num_layer, num_head, n_vocab, lr,
         max_seg=3, drop_rate=0.2, padding_idx=0) -> None:
         super().__init__(model_dim, max_len, num_layer, num_head, n_vocab, lr, max_seg, drop_rate, padding_idx)
     
@@ -23,10 +23,8 @@ class BERT(GPT):
         device = next(self.parameters()).device
         self.opt.zero_grad()
         mlm_logits, nsp_logits = self(seqs, segs, training=True)    # [n, step, n_vocab], [n, n_cls]
-        mlm_loss = cross_entropy(
-            torch.masked_select(mlm_logits,loss_mask).reshape(-1,mlm_logits.shape[2]),
-            torch.masked_select(seqs_,loss_mask.squeeze(2))
-            )
+        mlm_loss = cross_entropy(torch.masked_select(mlm_logits,loss_mask).reshape(-1,mlm_logits.shape[2]),
+            torch.masked_select(seqs_,loss_mask.squeeze(2)))
         nsp_loss = cross_entropy(nsp_logits,nsp_labels.reshape(-1))
         loss = mlm_loss + 0.2 * nsp_loss
         loss.backward()
@@ -37,6 +35,7 @@ class BERT(GPT):
         mask = torch.eq(seqs,self.padding_idx)
         return mask[:, None, None, :]
 
+# define the functions associated with the mask operation
 def _get_loss_mask(len_arange, seq, pad_id):
     rand_id = np.random.choice(len_arange, size=max(2, int(MASK_RATE * len(len_arange))), replace=False)
     loss_mask = np.full_like(seq, pad_id, dtype=np.bool)
@@ -94,15 +93,21 @@ def random_mask_or_replace(data,arange,dataset):
     return seqs, segs, seqs_, loss_mask, xlen, nsp_labels
 
 def train():
+    # 1.hyper-parameters
     MODEL_DIM = 256
     N_LAYER = 4
     LEARNING_RATE = 1e-4
+    # 2.load dataset
     dataset = utils.MRPCData("./MRPC",2000)
     print("num word: ",dataset.num_word)
+    # 3.define dataloader
+    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+    # 4. define model
     model = BERT(
         model_dim=MODEL_DIM, max_len=dataset.max_len, num_layer=N_LAYER, num_head=4, n_vocab=dataset.num_word,
         lr=LEARNING_RATE, max_seg=dataset.num_seg, drop_rate=0.2, padding_idx=dataset.pad_id
     )
+    # 5.prepare device
     if torch.cuda.is_available():
         print("GPU train avaliable")
         device =torch.device("cuda")
@@ -111,7 +116,7 @@ def train():
         device = torch.device("cpu")
         model = model.cpu()
     
-    loader = DataLoader(dataset,batch_size=32,shuffle=True)
+    # 6.training
     arange = np.arange(0,dataset.max_len)
     for epoch in range(500):
         for batch_idx, batch in enumerate(loader):
@@ -129,6 +134,7 @@ def train():
                 "\n| tgt word: ", [dataset.i2v[i] for i in (seqs_[0]*loss_mask[0].view(-1)).cpu().data.numpy() if i != dataset.v2i["<PAD>"]],
                 "\n| prd word: ", [dataset.i2v[i] for i in pred*(loss_mask[0].view(-1).cpu().data.numpy()) if i != dataset.v2i["<PAD>"]],
                 )
+    # 7. save models and results
     os.makedirs("./visual/models/bert",exist_ok=True)
     torch.save(model.state_dict(),"./visual/models/bert/model.pth")
     export_attention(model,device,dataset)
@@ -145,5 +151,7 @@ def export_attention(model,device,data,name="bert"):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         pickle.dump(data, f)
+
+
 if __name__ == "__main__":
     train()

@@ -35,7 +35,7 @@ class CBOW(nn.Module):
         super().__init__()
         self.v_dim = v_dim
         self.embeddings = nn.Embedding(v_dim,emb_dim)
-        self.embeddings.weight.data.normal_(0,0.1)
+        self.embeddings.weight.data.normal_(0,0.1)     #初始化embedding的权重
 
         # self.opt = torch.optim.Adam(0.01)
         self.hidden_out = nn.Linear(emb_dim,v_dim)
@@ -43,6 +43,7 @@ class CBOW(nn.Module):
     
     def forward(self,x,training=None, mask=None):
         # x.shape = [n,skip_window*2]
+        x = torch.LongTensor(x.long())
         o = self.embeddings(x)  # [n, skip_window*2, emb_dim]
         o = torch.mean(o,dim=1) # [n, emb_dim]
         return o
@@ -50,7 +51,7 @@ class CBOW(nn.Module):
     def loss(self, x, y, training=None):
         embedded = self(x,training)
         pred= self.hidden_out(embedded)
-        return cross_entropy(pred,y)
+        return cross_entropy(pred.float(), y.long())
     
     def step(self,x,y):
         self.opt.zero_grad()
@@ -75,7 +76,7 @@ def train(model,data):
             print(f"step: {t}  |  loss: {loss}")
 
 if __name__ == "__main__":
-    d = process_w2v_data(corpus,skip_window=2, method="cbow")
+    d = process_w2v_data(corpus,skip_window=2, method="cbow") # d is <utils.Dataset object at 0x00000195208A2B00>
     m = CBOW(d.num_word, 2)
     train(m,d)
 

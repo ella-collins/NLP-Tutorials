@@ -35,6 +35,7 @@ class ELMo(nn.Module):
         embedded = self.word_embed(seqs)    # [n, step, emb_dim]
         fxs = [embedded[:, :-1, :]]         # [n, step-1, emb_dim]
         bxs = [embedded[:, 1:, :]]          # [n, step-1, emb_dim]
+
         (h_f,c_f) = (torch.zeros(1,seqs.shape[0],self.units).to(device),torch.zeros(1,seqs.shape[0],self.units).to(device))
         (h_b,c_b) = (torch.zeros(1,seqs.shape[0],self.units).to(device),torch.zeros(1,seqs.shape[0],self.units).to(device))
         for fl,bl in zip(self.fs,self.bs):
@@ -50,34 +51,34 @@ class ELMo(nn.Module):
         fo,bo = self(seqs)
         fo = self.f_logits(fo[-1])  # [n, step-1, v_dim]
         bo = self.b_logits(bo[-1])  # [n, step-1, v_dim]
-        loss = (
-            cross_entropy(fo.reshape(-1,self.v_dim),seqs[:,1:].reshape(-1)) +
-            cross_entropy(bo.reshape(-1,self.v_dim),seqs[:,:-1].reshape(-1)))/2
+        loss = (cross_entropy(fo.reshape(-1,self.v_dim),seqs[:,1:].reshape(-1)) +
+                cross_entropy(bo.reshape(-1,self.v_dim),seqs[:,:-1].reshape(-1)))/2
         loss.backward()
         self.opt.step()
         return loss.cpu().detach().numpy(), (fo,bo)
     
     def get_emb(self,seqs):
-        fxs,bxs = self(seqs)
-        xs = [
-            torch.cat((fxs[0][:,1:,:],bxs[0][:,:-1,:]),dim=2).cpu().data.numpy()
-        ] + [
-            torch.cat((f[:,1:,:],b[:,:-1,:]),dim=2).cpu().data.numpy() for f,b in zip(fxs[1:],bxs[1:])
-        ]
+        fxs,bxs = self(seqs)  # [n, step-1, emb_dim] = [16, 37, 256]
+        xs = [torch.cat((fxs[0][:,1:,:], bxs[0][:,:-1,:]),dim=2).cpu().data.numpy()] \
+             + [torch.cat((f[:,1:,:], b[:,:-1,:]),dim=2).cpu().data.numpy() for f,b in zip(fxs[1:],bxs[1:])]
         for x in xs:
-            print("layers shape=",x.shape)
+            print("layers shape=",x.shape)           # (4, 36, 512)
         return xs
 
 
 
 def train():
-    dataset = utils.MRPCSingle("./MRPC",rows=2000)
+    # 1.hyper-parameters
     UNITS = 256
     N_LAYERS = 2
     BATCH_SIZE = 16
     LEARNING_RATE = 2e-3
+    # 2.load dataset
+    dataset = utils.MRPCSingle("./MRPC",rows=2000)
     print('num word: ',dataset.num_word)
+    # 3.define model
     model = ELMo(v_dim = dataset.num_word,emb_dim = UNITS, units=UNITS, n_layers=N_LAYERS,lr=LEARNING_RATE)
+    # 4.prepare device for data and model
     if torch.cuda.is_available():
         print("GPU train avaliable")
         device =torch.device("cuda")
@@ -85,7 +86,9 @@ def train():
     else:
         device = torch.device("cpu")
         model = model.cpu()
+    # 5.define dataloader
     loader = DataLoader(dataset,batch_size=BATCH_SIZE,shuffle=True)
+    # 6.training
     for i in range(10):
         for batch_idx , batch in enumerate(loader):
             batch = batch.type(torch.LongTensor).to(device)
@@ -100,6 +103,7 @@ def train():
                 "\n| f_prd: ", " ".join([dataset.i2v[i] for i in fp if i != dataset.pad_id]),
                 "\n| b_prd: ", " ".join([dataset.i2v[i] for i in bp if i != dataset.pad_id]),
                 )
+    # save model and results
     os.makedirs("./visual/models/elmo",exist_ok=True)
     torch.save(model.state_dict(),"./visual/models/elmo/model.pth")
     export_w2v(model,batch[:4],device)

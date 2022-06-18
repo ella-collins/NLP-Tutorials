@@ -38,9 +38,9 @@ class SkipGram(nn.Module):
         self.v_dim = v_dim
         self.embeddings = nn.Embedding(v_dim,emb_dim)
         self.embeddings.weight.data.normal_(0,0.1)
-        self.hidden_out = nn.Linear(emb_dim,v_dim)
+        self.hidden_out = nn.Linear(emb_dim,v_dim)     #用来预测embedding后的向量是那个word的
 
-        self.opt = torch.optim.Adam(self.parameters(),lr=0.01)
+        self.opt = torch.optim.Adam(self.parameters(),lr=0.01) #优化器
     
     def forward(self,x,training=None, mask=None):
         # x.shape = [n,]
@@ -50,7 +50,7 @@ class SkipGram(nn.Module):
     def loss(self,x,y,training=None):
         embedded = self(x,training)
         pred= self.hidden_out(embedded)
-        return cross_entropy(pred,y)
+        return cross_entropy(pred.float(), y.long())
     
     def step(self,x,y):
         self.opt.zero_grad()

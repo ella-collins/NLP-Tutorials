@@ -70,7 +70,7 @@ class PositionWiseFFN(nn.Module):
         dff = model_dim*4
         self.l = nn.Linear(model_dim,dff)
         self.o = nn.Linear(dff,model_dim)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout)       # 增加了一个dropout层
         self.layer_norm = nn.LayerNorm(model_dim)
 
     def forward(self,x):
@@ -214,7 +214,7 @@ class Transformer(nn.Module):
         encoded_z = self.encoder(x_embed,False,mask=self._pad_mask(src_pad))
         for i in range(0,self.max_len):
             y = target[:,:-1]
-            y_embed = self.embed(y)
+            y_embed = self.embed(y.long())
             decoded_z = self.decoder(y_embed,encoded_z,False,self._look_ahead_mask(y),self._pad_mask(src_pad))
             o = self.o(decoded_z)[:,i,:]
             idx = o.argmax(dim = 1).detach()
@@ -228,13 +228,15 @@ class Transformer(nn.Module):
 
 def train(emb_dim=32,n_layer=3,n_head=4):
     
-    dataset = utils.DateData(4000)
+    dataset = utils.DateData(4000)     #产生4000个样本
     print("Chinese time order: yy/mm/dd ",dataset.date_cn[:3],"\nEnglish time order: dd/M/yyyy", dataset.date_en[:3])
     print("Vocabularies: ", dataset.vocab)
     print(f"x index sample:  \n{dataset.idx2str(dataset.x[0])}\n{dataset.x[0]}",
-    f"\ny index sample:  \n{dataset.idx2str(dataset.y[0])}\n{dataset.y[0]}")
-    loader = DataLoader(dataset,batch_size=32,shuffle=True)
-    model = Transformer(n_vocab=dataset.num_word, max_len=MAX_LEN, n_layer = n_layer, emb_dim=emb_dim, n_head = n_head, drop_rate=0.1, padding_idx=0)
+    f"\ny index sample:  \n{dataset.idx2str(dataset.y[0])}\n{dataset.y[0]}")       #输出3个样本观察
+    loader = DataLoader(dataset,batch_size=32,shuffle=True)                        #建立DataLoader
+    model = Transformer(n_vocab=dataset.num_word, max_len=MAX_LEN, n_layer = n_layer, emb_dim=emb_dim, n_head = n_head, drop_rate=0.1, padding_idx=0)   #建立模型
+
+    #数据和模型移到设备上
     if torch.cuda.is_available():
         print("GPU train avaliable")
         device =torch.device("cuda")
@@ -242,16 +244,19 @@ def train(emb_dim=32,n_layer=3,n_head=4):
     else:
         device = torch.device("cpu")
         model = model.cpu()
+
+    #训练100 epoch
     for i in range(100):
         for batch_idx , batch in enumerate(loader):
             bx, by, decoder_len = batch
             bx, by = torch.from_numpy(utils.pad_zero(bx,max_len = MAX_LEN)).type(torch.LongTensor).to(device), torch.from_numpy(utils.pad_zero(by,MAX_LEN+1)).type(torch.LongTensor).to(device)
             loss, logits = model.step(bx,by)
+            #每隔50step输出一下模型的预测结果
             if batch_idx%50 == 0:
                 target = dataset.idx2str(by[0, 1:-1].cpu().data.numpy())
                 pred = model.translate(bx[0:1],dataset.v2i,dataset.i2v)
-                res = dataset.idx2str(pred[0].cpu().data.numpy())
                 src = dataset.idx2str(bx[0].cpu().data.numpy())
+                res = dataset.idx2str(pred[0].cpu().data.numpy())
                 print(
                     "Epoch: ",i,
                     "| t: ", batch_idx,
@@ -260,6 +265,11 @@ def train(emb_dim=32,n_layer=3,n_head=4):
                     "| target: ", target,
                     "| inference: ", res,
                 )
+
+# batch_size = 32
+# MAX_LEN = 11
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -18,8 +18,8 @@ class CNNTranslation(nn.Module):
         # encoder
         self.enc_embeddings = nn.Embedding(enc_v_dim,emb_dim)
         self.enc_embeddings.weight.data.normal_(0,0.1)
-        self.conv2ds = [nn.Conv2d(1,16,(n,emb_dim),padding=0) for n in range(2,5)]
-        self.max_pools = [nn.MaxPool2d((n,1)) for n in [7,6,5]]
+        self.conv2ds = [nn.Conv2d(1,16,(n,emb_dim),padding=0) for n in range(2,5)]   #定义3个卷积核，(2,emb_dim), (3,emb_dim), (4,emb_dim),
+        self.max_pools = [nn.MaxPool2d((n,1)) for n in [7,6,5]]   #3个不同大小的卷积核，channel=1
         self.encoder = nn.Linear(16*3,units)
 
         # decoder
@@ -42,6 +42,19 @@ class CNNTranslation(nn.Module):
         o = torch.cat(co,dim=1)     # [n, 16*3]
         h = self.encoder(o)         # [n, units]
         return [h,h]
+
+    def train_logit(self,x,y):
+        hx,cx = self.encode(x)  #[n, units]
+        dec_in = y[:,:-1]
+        dec_emb_in = self.dec_embeddings(dec_in)
+        dec_emb_in = dec_emb_in.permute(1,0,2)
+        output = []
+        for i in range(dec_emb_in.shape[0]):
+            hx, cx = self.decoder_cell(dec_emb_in[i], (hx, cx))
+            o = self.decoder_dense(hx)
+            output.append(o)
+        output = torch.stack(output,dim=0)
+        return output.permute(1,0,2)
     
     def inference(self,x):
         self.eval()
@@ -64,25 +77,12 @@ class CNNTranslation(nn.Module):
 
         return output.permute(1,0,2).view(-1,self.max_pred_len) # [n, self.max_pred_len]
     
-    def train_logit(self,x,y):
-        hx,cx = self.encode(x)  #[n, units]
-        dec_in = y[:,:-1]
-        dec_emb_in = self.dec_embeddings(dec_in)
-        dec_emb_in = dec_emb_in.permute(1,0,2)
-        output = []
-        for i in range(dec_emb_in.shape[0]):
-            hx, cx = self.decoder_cell(dec_emb_in[i], (hx, cx))
-            o = self.decoder_dense(hx)
-            output.append(o)
-        output = torch.stack(output,dim=0)
-        return output.permute(1,0,2)
-    
     def step(self,x,y):
         self.opt.zero_grad()
         batch_size = x.shape[0]
         logit = self.train_logit(x,y)    
         dec_out = y[:,1:]
-        loss = cross_entropy(logit.reshape(-1,self.dec_v_dim),dec_out.reshape(-1))
+        loss = cross_entropy(logit.reshape(-1,self.dec_v_dim), dec_out.reshape(-1).long())
         loss.backward()
         self.opt.step()
         return loss.detach().numpy()

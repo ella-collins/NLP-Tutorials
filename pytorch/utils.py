@@ -15,22 +15,22 @@ class DateData(tDataset):
         self.date_cn = []
         self.date_en = []
         for timestamp in np.random.randint(143835585, 2043835585, n):
-            date = datetime.datetime.fromtimestamp(timestamp)
-            self.date_cn.append(date.strftime("%y-%m-%d"))
-            self.date_en.append(date.strftime("%d/%b/%Y"))
+            date = datetime.datetime.fromtimestamp(timestamp)      # date -> 1970-01-01 08:00:00
+            self.date_cn.append(date.strftime("%y-%m-%d"))         # 70-01-01
+            self.date_en.append(date.strftime("%d/%b/%Y"))         # 01/Jan/1970
         self.vocab= set(
             [str(i) for i in range(0,10)] + ["-","/","<GO>","<EOS>"] + [i.split("/")[1] for i in self.date_en]
-        )
-        self.v2i = {v:i for i,v in enumerate(sorted(list(self.vocab)), start=1)}
-        self.v2i["<PAD>"] = PAD_ID
+        )      # 建立vocablary [数字0-9]+["-","/","<GO>","<EOS>"]+['/'分隔的英文日期string]
+        self.v2i = {v:i for i,v in enumerate(sorted(list(self.vocab)), start=1)}  # {vocablary:index} 从1开始编号
+        self.v2i["<PAD>"] = PAD_ID   # self.v2i中添加0填充
         self.vocab.add("<PAD>")
-        self.i2v = {i:v for v,i in self.v2i.items()}
+        self.i2v = {i:v for v,i in self.v2i.items()}   # 用v2i生成i2v
         self.x,self.y=[],[]
         for cn,en in zip(self.date_cn,self.date_en):
-            self.x.append([self.v2i[v] for v in cn])
-            self.y.append([self.v2i["<GO>"], ] + [self.v2i[v] for v in en[:3]] + [
-                self.v2i[en[3:6]]] + [self.v2i[v] for v in en[6:]] + [self.v2i["<EOS>"],])
-        self.x,self.y = np.array(self.x),np.array(self.y)
+            self.x.append([self.v2i[v] for v in cn])  # 31-04-26 ->[6 4 1 3 7 1 5 9]
+            self.y.append([self.v2i["<GO>"], ] + [self.v2i[v] for v in en[:3]] +
+                          [self.v2i[en[3:6]]] + [self.v2i[v] for v in en[6:]] + [self.v2i["<EOS>"],]) # <GO>26/Apr/2031<EOS>  -> [14  5  9  2 15  2  5  3  6  4 13]
+        self.x, self.y = np.array(self.x), np.array(self.y)
         self.start_token = self.v2i["<GO>"]
         self.end_token = self.v2i["<EOS>"]
     
@@ -51,6 +51,7 @@ class DateData(tDataset):
             if i == self.end_token:
                 break
         return "".join(x)
+
 
 def pad_zero(seqs, max_len):
     padded = np.full((len(seqs), max_len), fill_value=PAD_ID, dtype=np.int32)
@@ -73,18 +74,18 @@ class Dataset:
         return len(self.v2i)
 
 def process_w2v_data(corpus,skip_window=2,method = "skip_gram"):
-    all_words = [sentence.split(" ") for sentence in corpus]
+    all_words = [sentence.split(" ") for sentence in corpus]   # 每个sentence的word分隔开
     # groups all the iterables together and produces a single iterable as output
-    all_words = np.array(list(itertools.chain(*all_words)))
-    vocab,v_count = np.unique(all_words,return_counts=True)
-    vocab = vocab[np.argsort(v_count)[::-1]]
+    all_words = np.array(list(itertools.chain(*all_words)))    # 整理到一个np.ndarray中
+    vocab,v_count = np.unique(all_words,return_counts=True)    # 统计vocablary以及出现次数
+    vocab = vocab[np.argsort(v_count)[::-1]]                   # 从频率高-低重新排序vocablary
     
     print("All vocabularies are sorted by frequency in decresing oreder")
-    v2i = {v:i for i,v in enumerate(vocab)}
-    i2v = {i:v for v,i in v2i.items()}
+    v2i = {v:i for i,v in enumerate(vocab)}     # {vocablary:index, ……}
+    i2v = {i:v for v,i in v2i.items()}  # # {index:vocablary, ……}
 
     pairs = []
-    js = [i for i in range(-skip_window,skip_window+1) if i!=0]
+    js = [i for i in range(-skip_window,skip_window+1) if i!=0]  # [-2, -1, 1, 2]
 
     for c in corpus:
         words = c.split(" ")
@@ -123,7 +124,7 @@ def maybe_download_mrpc(save_dir="./MRPC/", proxy=None):
         raw_path = os.path.join(save_dir, url.split("/")[-1])
         if not os.path.isfile(raw_path):
             print("downloading from %s" % url)
-            r = requests.get(url, proxies=proxies)
+            r = requests.get(url, proxies=proxies)      #正式下载文件
             with open(raw_path, "w", encoding="utf-8") as f:
                 f.write(r.text.replace('"', "<QUOTE>"))
                 print("completed")
@@ -216,7 +217,6 @@ class MRPCData(tDataset):
 
 class MRPCSingle(tDataset):
     pad_id = PAD_ID
-
     def __init__(self,data_dir="./MRPC/",rows = None, proxy= None):
         maybe_download_mrpc(save_dir=data_dir, proxy=proxy)
 
